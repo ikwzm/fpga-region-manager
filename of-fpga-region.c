@@ -135,6 +135,18 @@ static int of_fpga_region_get_bridges(struct fpga_region *region)
 		}
 	}
 
+        ret = fpga_bridges_of_setup(&region->bridge_list, region_np);
+        if (ret) {
+		fpga_bridge_put(&region->bridge_list);
+		return -EBUSY;
+	}
+
+        ret = fpga_briges_of_setup(&region->bridge_list, info->overlay);
+        if (ret) {
+		fpga_bridges_put(&region->bridge_list);
+		return -EBUSY;
+	}
+
 	return 0;
 }
 

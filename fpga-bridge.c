@@ -56,6 +56,32 @@ int fpga_bridge_disable(struct fpga_bridge *bridge)
 }
 EXPORT_SYMBOL_GPL(fpga_bridge_disable);
 
+/**
+ * fpga_bridge_of_setup - Setup the bridge by device tree node
+ *
+ * @bridge: FPGA bridge
+ * @np: node pointer of device tree
+ *
+ * Return: 0 for success, error code otherwise.
+ */
+int fpga_bridge_of_setup(struct fpga_bridge *bridge, struct device_node* np)
+{
+  
+	dev_dbg(&bridge->dev, "setup\n");
+
+	if (bridge->br_ops && bridge->br_ops->of_setup) {
+		struct device_node* node = of_find_node_by_name(of_node_get(np), bridge->name);
+		if (node) {
+			int retval = bridge->br_ops->of_setup(bridge, node);
+			of_node_put(node);
+			return retval;
+		}
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(fpga_bridge_of_setup);
+
 static struct fpga_bridge *__fpga_bridge_get(struct device *dev,
 					     struct fpga_image_info *info)
 {
@@ -198,6 +224,31 @@ int fpga_bridges_disable(struct list_head *bridge_list)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(fpga_bridges_disable);
+
+/**
+ * fpga_bridges_of_setup - setup bridge in a list
+ *
+ * @bridge_list: list of bridges
+ * @np: node pointer of device tree
+ *
+ * Setup each interface in the list.  If list is empty, do nothing.
+ *
+ * Return 0 for success or empty interface list; return error code otherwise.
+ */
+int fpga_bridges_of_setup(struct list_head* bridge_list, struct device_node* np)
+{
+	struct fpga_bridge* bridge;
+	int ret;
+
+	list_for_each_entry(bridge, bridge_list, node) {
+		ret = fpga_bridge_of_setup(bridge, np);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(fpga_bridges_of_setup);
 
 /**
  * fpga_bridges_put - put bridges

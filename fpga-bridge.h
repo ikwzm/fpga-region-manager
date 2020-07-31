@@ -18,6 +18,7 @@ struct fpga_bridge;
 struct fpga_bridge_ops {
 	int (*enable_show)(struct fpga_bridge *bridge);
 	int (*enable_set)(struct fpga_bridge *bridge, bool enable);
+	int (*of_setup)(struct fpga_bridge *bridge, struct device_node *np);
 	void (*fpga_bridge_remove)(struct fpga_bridge *bridge);
 	const struct attribute_group **groups;
 };
@@ -51,9 +52,11 @@ struct fpga_bridge *fpga_bridge_get(struct device *dev,
 void fpga_bridge_put(struct fpga_bridge *bridge);
 int fpga_bridge_enable(struct fpga_bridge *bridge);
 int fpga_bridge_disable(struct fpga_bridge *bridge);
+int fpga_bridge_of_setup(struct fpga_bridge *bridge, struct device_node *np);
 
 int fpga_bridges_enable(struct list_head *bridge_list);
 int fpga_bridges_disable(struct list_head *bridge_list);
+int fpga_bridges_of_setup(struct list_head *bridge_list, struct device_node *np);
 void fpga_bridges_put(struct list_head *bridge_list);
 int fpga_bridge_get_to_list(struct device *dev,
 			    struct fpga_image_info *info,

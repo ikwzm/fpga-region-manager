@@ -12,6 +12,7 @@
 #include <linux/of_platform.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/fpga/fpga-bridge.h>
 #include "fpga-region-interface.h"
 
 static DEFINE_IDA(fpga_region_interface_ida);
@@ -31,6 +32,9 @@ int fpga_region_interface_enable(struct fpga_region_interface* interface)
 {
 	dev_dbg(&interface->dev, "enable\n");
 
+	if (interface->dev.class != fpga_region_interface_class) 
+		return fpga_bridge_enable((struct fpga_bridge*)interface);
+
 	if (interface->ops && interface->ops->enable_set)
 		return interface->ops->enable_set(interface, 1);
 
@@ -48,6 +52,9 @@ EXPORT_SYMBOL_GPL(fpga_region_interface_enable);
 int fpga_region_interface_disable(struct fpga_region_interface* interface)
 {
 	dev_dbg(&interface->dev, "disable\n");
+
+	if (interface->dev.class != fpga_region_interface_class) 
+		return fpga_bridge_disable((struct fpga_bridge*)interface);
 
 	if (interface->ops && interface->ops->enable_set)
 		return interface->ops->enable_set(interface, 0);
@@ -68,6 +75,9 @@ int fpga_region_interface_of_setup(struct fpga_region_interface* interface, stru
 {
   
 	dev_dbg(&interface->dev, "setup\n");
+
+	if (interface->dev.class != fpga_region_interface_class)
+		return 0;
 
 	if (interface->ops && interface->ops->of_setup) {
 		struct device_node* node = of_find_node_by_name(of_node_get(np), interface->name);
@@ -267,8 +277,10 @@ void fpga_region_interfaces_put(struct list_head* interface_list)
 	unsigned long flags;
 
 	list_for_each_entry_safe(interface, next, interface_list, node) {
-		fpga_region_interface_put(interface);
-
+		if (interface->dev.class == fpga_region_interface_class)
+			fpga_region_interface_put(interface);
+		else
+			fpga_bridge_put((struct fpga_bridge*)interface);
 		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
 		list_del(&interface->node);
 		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
@@ -293,17 +305,24 @@ int of_fpga_region_interface_get_to_list(
 	struct list_head *interface_list)
 {
 	struct fpga_region_interface* interface;
+	struct fpga_bridge*           bridge;
 	unsigned long                 flags;
 
 	interface = of_fpga_region_interface_get(np, info);
-	if (IS_ERR(interface)) 
-		return PTR_ERR(interface);
-
-        spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
-	list_add(&interface->node, interface_list);
-	spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
-
-	return 0;
+	if (!IS_ERR(interface)) {
+		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
+		list_add(&interface->node, interface_list);
+		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
+		return 0;
+        }
+	bridge = of_fpga_bridge_get(np, info);
+	if (!IS_ERR(bridge)) {
+		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
+		list_add(&bridge->node, interface_list);
+		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
+		return 0;
+        }
+	return PTR_ERR(bridge);
 }
 EXPORT_SYMBOL_GPL(of_fpga_region_interface_get_to_list);
 
@@ -324,17 +343,24 @@ int fpga_region_interface_get_to_list(
 	struct list_head *interface_list)
 {
 	struct fpga_region_interface* interface;
+	struct fpga_bridge*           bridge;
 	unsigned long                 flags;
 
 	interface = fpga_region_interface_get(dev, info);
-	if (IS_ERR(interface))
-		return PTR_ERR(interface);
-        
-	spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
-	list_add(&interface->node, interface_list);
-	spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
-        
-	return 0;
+	if (!IS_ERR(interface)) {
+		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
+		list_add(&interface->node, interface_list);
+		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
+		return 0;
+        }
+	bridge = fpga_bridge_get(dev, info);
+	if (!IS_ERR(bridge)) {
+		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
+		list_add(&bridge->node, interface_list);
+		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
+		return 0;
+        }
+	return PTR_ERR(bridge);
 }
 EXPORT_SYMBOL_GPL(fpga_region_interface_get_to_list);
 

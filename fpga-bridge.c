@@ -4,6 +4,7 @@
  *
  *  Copyright (C) 2013-2016 Altera Corporation, All Rights Reserved.
  *  Copyright (C) 2017 Intel Corporation
+ *  Copyright (C) 2020 Ichiro Kawazome
  */
 #include <linux/fpga/fpga-bridge.h>
 #include <linux/idr.h>
@@ -188,7 +189,7 @@ int fpga_bridges_disable(struct list_head *bridge_list)
 	struct fpga_bridge *bridge;
 	int ret;
 
-	list_for_each_entry(bridge, bridge_list, node) {
+	list_for_each_entry_reverse(bridge, bridge_list, node) {
 		ret = fpga_bridge_disable(bridge);
 		if (ret)
 			return ret;

@@ -418,7 +418,10 @@ struct fpga_region_interface *fpga_region_interface_create(
 	interface->dev.of_node = dev->of_node;
 	interface->dev.id      = id;
 
-	ret = dev_set_name(&interface->dev, "br%d", id);
+	if (name)
+		ret = dev_set_name(&interface->dev, "%s", name);
+	else
+		ret = dev_set_name(&interface->dev, "br%d", id);
 	if (ret)
 		goto error_device;
 

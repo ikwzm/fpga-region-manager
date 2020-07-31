@@ -40,13 +40,14 @@ Before programming the FPGA with fpga-region-manager, prepare the following devi
 / {
 /dts-v1/; /plugin/;
 / {
+/ {
 	fragment@0 {
 		target-path = "/";
 		__overlay__ {
 			fpga_clk0: fpga-clk0 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk0";
-				clocks        = <&zynqmp_clk 0x47>;
+				clocks        = <&zynqmp_clk 0x47 &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-rate   = <100000000>;
 				insert-enable = <0>;
 				remove-enable = <0>;
@@ -54,21 +55,21 @@ Before programming the FPGA with fpga-region-manager, prepare the following devi
 			fpga_clk1: fpga-clk1 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk1";
-				clocks        = <&zynqmp_clk 0x48>;
+				clocks        = <&zynqmp_clk 0x48 &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-enable = <0>;
 				remove-enable = <0>;
 			};
 			fpga_clk2: fpga-clk2 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk2";
-				clocks        = <&zynqmp_clk 0x49>;
+				clocks        = <&zynqmp_clk 0x49 &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-enable = <0>;
 				remove-enable = <0>;
 			};
 			fpga_clk3: fpga-clk3 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk3";
-				clocks        = <&zynqmp_clk 0x4a>;
+				clocks        = <&zynqmp_clk 0x4a &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-enable = <0>;
 				remove-enable = <0>;
 			};
@@ -79,7 +80,6 @@ Before programming the FPGA with fpga-region-manager, prepare the following devi
 			};
 		};
         };
-};
 };
 ```
 
@@ -96,8 +96,9 @@ you would have a device tree such as:
 		__overlay__ {
 			firmware-name = "examlpe1.bin";
 			fpga-clk0 {
-				region-rate   = <250000000>;
-				region-enable = <1>;
+				region-rate     = <250000000>;
+				region-enable   = <1>;
+				region-resource = <0>;
 			};
 		};
         };

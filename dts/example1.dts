@@ -5,8 +5,9 @@
 		__overlay__ {
 			firmware-name = "examlpe1.bin";
 			fpga-clk0 {
-				region-rate   = <250000000>;
-				region-enable = <1>;
+				region-rate     = <250000000>;
+				region-enable   = <1>;
+				region-resource = <0>;
 			};
 		};
         };

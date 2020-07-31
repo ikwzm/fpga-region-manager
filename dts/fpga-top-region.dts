@@ -6,7 +6,7 @@
 			fpga_clk0: fpga-clk0 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk0";
-				clocks        = <&zynqmp_clk 0x47>;
+				clocks        = <&zynqmp_clk 0x47 &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-rate   = <100000000>;
 				insert-enable = <0>;
 				remove-enable = <0>;
@@ -14,21 +14,21 @@
 			fpga_clk1: fpga-clk1 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk1";
-				clocks        = <&zynqmp_clk 0x48>;
+				clocks        = <&zynqmp_clk 0x48 &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-enable = <0>;
 				remove-enable = <0>;
 			};
 			fpga_clk2: fpga-clk2 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk2";
-				clocks        = <&zynqmp_clk 0x49>;
+				clocks        = <&zynqmp_clk 0x49 &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-enable = <0>;
 				remove-enable = <0>;
 			};
 			fpga_clk3: fpga-clk3 {
 				compatible    = "ikwzm,fpga-region-clock";
 				device-name   = "fpga-clk3";
-				clocks        = <&zynqmp_clk 0x4a>;
+				clocks        = <&zynqmp_clk 0x4a &zynqmp_clk 0 &zynqmp_clk 1 &zynqmp_clk 8>;
 				insert-enable = <0>;
 				remove-enable = <0>;
 			};

@@ -1,0 +1,14 @@
+/dts-v1/; /plugin/;
+/ {
+	fragment@0 {
+		target-path = "/fpga-top-region";
+		__overlay__ {
+			firmware-name = "examlpe1.bin";
+			fpga-bridges  = <&fpga_clk0>;
+			fpga-clk0 {
+				region-rate   = <250 1000 1000>;
+				region-enable = <1>;
+			};
+		};
+        };
+};

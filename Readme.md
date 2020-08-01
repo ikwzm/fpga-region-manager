@@ -5,7 +5,11 @@ fpga-region-manager
 
 ## Introduction of fpga-region-manager
 
-fpga-region-managers is a Linux Kernel module for programming FPGA while safely changing the clock frequency.
+fpga-region-manager is a Linux Kernel module for programming FPGA while safely changing the clock frequency.
+
+![Fig.1 fpga-region-manager operation](./Readme-1.jpg "Fig.1 fpga-region-manager operation")
+
+Fig.1 fpga-region-manager operation
 
 ## Supported platforms
 

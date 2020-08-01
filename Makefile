@@ -17,7 +17,10 @@ fpga-region-interface-obj  := fpga-region-interface.o
 fpga-region-manager-obj    := fpga-region-manager.o
 fpga-region-clock-obj      := fpga-region-clock.o
 
-all: fpga-region-interface.ko fpga-region-manager.ko fpga-region-clock.ko
+all: fpga-region-interface.ko fpga-region-core.ko fpga-region-manager.ko fpga-region-clock.ko
+
+fpga-region-core.ko:
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=fpga-region-core.o fpga-region-core.ko
 
 fpga-region-interface.ko:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=fpga-region-interface.o fpga-region-interface.ko

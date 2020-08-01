@@ -12,6 +12,34 @@ fpga-region-managers is a Linux Kernel module for programming FPGA while safely 
 * OS : Linux Kernel Version 5.4 (with CONFIG_FPGA_REGION=y and CONFIG_OF_FPGA_REGION=y)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 
+## Changes from original
+
+fpga-region-manager is a minor modification of fpga_region, fpga_bridge and of_fpga_region included in the mainline of the Linux Kernel.
+The names have been changed as follows to prevent name collisions within the Linux Kernel.
+
+| original name       | renamed                |
+|:--------------------|:-----------------------|
+| fpga_region         | fpga_region_core       |
+| fpga_bridge         | fpga_region_interface  |
+| of_fpga_region      | fpga_region_manager    |
+
+Perhaps in the future these fixes may be introduced into the Linux Kernel mainline.
+
+fpga_region_interface has the following additional changes from fpga_brdige.
+
+  * add of_setup() to fpga_region_interface_ops.
+  * fpga_region_interfaces_disable() performs the reverse order of fpga_region_interfaces_enable().
+  * if a name is specified when the device create, that name is set to the device name.
+
+fpga_region_core has the following additional changes from fpga_region.
+
+  * fpga_region_interface is used instead of fpga_bridge.
+
+fpga_region_manager has the following additional changes from of_fpga_region.
+
+  * fpga_region_core is used instead of fpga_region.
+  * of_setup() of fpga-region-interface is called, when fpga_region_manager_get_interfaces() is executed.
+
 # Usage
 
 ## Compile Kernal Modules
@@ -27,6 +55,7 @@ shell$ make
 
 ```console
 shell$ sudo insmod fpga-region-interface.ko
+shell$ sudo insmod fpga-region-core.ko
 shell$ sudo insmod fpga-region-manager.ko
 shell$ sudo insmod fpga-region-clock.ko
 ```

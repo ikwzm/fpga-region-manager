@@ -7,7 +7,6 @@
  *  Copyright (C) 2020 Ichiro Kawazome
  */
 #include <linux/fpga/fpga-mgr.h>
-#include <linux/fpga/fpga-region.h>
 #include <linux/idr.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -15,6 +14,7 @@
 #include <linux/of_platform.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include "fpga-region-core.h"
 #include "fpga-region-interface.h"
 
 static const struct of_device_id fpga_region_manager_of_match[] = {
@@ -22,6 +22,19 @@ static const struct of_device_id fpga_region_manager_of_match[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(of, fpga_region_manager_of_match);
+
+/**
+ * fpga_region_manager_find - find FPGA region
+ * @np: device node of FPGA Region
+ *
+ * Caller will need to put_device(&region->dev) when done.
+ *
+ * Returns FPGA Region struct or NULL
+ */
+static struct fpga_region_core *fpga_region_manager_find(struct device_node *np)
+{
+	return fpga_region_core_class_find(NULL, np, device_match_of_node);
+}
 
 /**
  * fpga_region_manager_get_mgr - get reference for FPGA manager
@@ -65,13 +78,13 @@ static struct fpga_manager *fpga_region_manager_get_mgr(struct device_node *np)
  * fpga_bridges_enable/disable/put functions are all fine with an empty list
  * if that happens.
  *
- * Caller should call fpga_bridges_put(&region->bridge_list) when
+ * Caller should call fpga_bridges_put(&region->interface_list) when
  * done with the bridges.
  *
  * Return 0 for success (even if there are no bridges specified)
  * or -EBUSY if any of the bridges are in use.
  */
-static int fpga_region_manager_get_interfaces(struct fpga_region *region)
+static int fpga_region_manager_get_interfaces(struct fpga_region_core *region)
 {
 	struct device *dev = &region->dev;
 	struct device_node *region_np = dev->of_node;
@@ -80,7 +93,7 @@ static int fpga_region_manager_get_interfaces(struct fpga_region *region)
 	int i, ret;
 
 	/* If parent is a bridge, add to list */
-	ret = of_fpga_region_interface_get_to_list(region_np->parent, info, &region->bridge_list);
+	ret = of_fpga_region_interface_get_to_list(region_np->parent, info, &region->interface_list);
 
 	/* -EBUSY means parent is a bridge that is under use. Give up. */
 	if (ret == -EBUSY)
@@ -111,36 +124,295 @@ static int fpga_region_manager_get_interfaces(struct fpga_region *region)
 		}
 
 		/* If node is a bridge, get it and add to list */
-		ret = of_fpga_region_interface_get_to_list(br, info, &region->bridge_list);
+		ret = of_fpga_region_interface_get_to_list(br, info, &region->interface_list);
 		of_node_put(br);
 
 		/* If any of the bridges are in use, give up */
 		if (ret == -EBUSY) {
-			fpga_region_interfaces_put(&region->bridge_list);
+			fpga_region_interfaces_put(&region->interface_list);
 			return -EBUSY;
 		}
 	}
 
-        ret = fpga_region_interfaces_of_setup(&region->bridge_list, region_np);
+        ret = fpga_region_interfaces_of_setup(&region->interface_list, region_np);
         if (ret) {
-		fpga_region_interfaces_put(&region->bridge_list);
+		fpga_region_interfaces_put(&region->interface_list);
 		return -EBUSY;
 	}
 
-        ret = fpga_region_interfaces_of_setup(&region->bridge_list, info->overlay);
+        ret = fpga_region_interfaces_of_setup(&region->interface_list, info->overlay);
         if (ret) {
-		fpga_region_interfaces_put(&region->bridge_list);
+		fpga_region_interfaces_put(&region->interface_list);
 		return -EBUSY;
 	}
 
 	return 0;
 }
 
+/**
+ * child_regions_with_firmware
+ * @overlay: device node of the overlay
+ *
+ * If the overlay adds child FPGA regions, they are not allowed to have
+ * firmware-name property.
+ *
+ * Return 0 for OK or -EINVAL if child FPGA region adds firmware-name.
+ */
+static int child_regions_with_firmware(struct device_node *overlay)
+{
+	struct device_node *child_region;
+	const char *child_firmware_name;
+	int ret = 0;
+
+	of_node_get(overlay);
+
+	child_region = of_find_matching_node(overlay, fpga_region_manager_of_match);
+	while (child_region) {
+		if (!of_property_read_string(child_region, "firmware-name",
+					     &child_firmware_name)) {
+			ret = -EINVAL;
+			break;
+		}
+		child_region = of_find_matching_node(child_region,
+						     fpga_region_manager_of_match);
+	}
+
+	of_node_put(child_region);
+
+	if (ret)
+		pr_err("firmware-name not allowed in child FPGA region: %pOF",
+		       child_region);
+
+	return ret;
+}
+
+/**
+ * fpga_region_manager_parse_overlay - parse and check overlay applied to region
+ *
+ * @region: FPGA region
+ * @overlay: overlay applied to the FPGA region
+ *
+ * Given an overlay applied to a FPGA region, parse the FPGA image specific
+ * info in the overlay and do some checking.
+ *
+ * Returns:
+ *   NULL if overlay doesn't direct us to program the FPGA.
+ *   fpga_image_info struct if there is an image to program.
+ *   error code for invalid overlay.
+ */
+static struct fpga_image_info *fpga_region_manager_parse_overlay(
+						struct fpga_region_core *region,
+						struct device_node *overlay)
+{
+	struct device *dev = &region->dev;
+	struct fpga_image_info *info;
+	const char *firmware_name;
+	int ret;
+
+	if (region->info) {
+		dev_err(dev, "Region already has overlay applied.\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	/*
+	 * Reject overlay if child FPGA Regions added in the overlay have
+	 * firmware-name property (would mean that an FPGA region that has
+	 * not been added to the live tree yet is doing FPGA programming).
+	 */
+	ret = child_regions_with_firmware(overlay);
+	if (ret)
+		return ERR_PTR(ret);
+
+	info = fpga_image_info_alloc(dev);
+	if (!info)
+		return ERR_PTR(-ENOMEM);
+
+	info->overlay = overlay;
+
+	/* Read FPGA region properties from the overlay */
+	if (of_property_read_bool(overlay, "partial-fpga-config"))
+		info->flags |= FPGA_MGR_PARTIAL_RECONFIG;
+
+	if (of_property_read_bool(overlay, "external-fpga-config"))
+		info->flags |= FPGA_MGR_EXTERNAL_CONFIG;
+
+	if (of_property_read_bool(overlay, "encrypted-fpga-config"))
+		info->flags |= FPGA_MGR_ENCRYPTED_BITSTREAM;
+
+	if (of_property_read_bool(overlay, "fpga-config-from-dmabuf"))
+		info->flags |= FPGA_MGR_CONFIG_DMA_BUF;
+
+	if (!of_property_read_string(overlay, "firmware-name",
+				     &firmware_name)) {
+		info->firmware_name = devm_kstrdup(dev, firmware_name,
+						   GFP_KERNEL);
+		if (!info->firmware_name)
+			return ERR_PTR(-ENOMEM);
+	}
+
+	of_property_read_u32(overlay, "region-unfreeze-timeout-us",
+			     &info->enable_timeout_us);
+
+	of_property_read_u32(overlay, "region-freeze-timeout-us",
+			     &info->disable_timeout_us);
+
+	of_property_read_u32(overlay, "config-complete-timeout-us",
+			     &info->config_complete_timeout_us);
+
+	/* If overlay is not programming the FPGA, don't need FPGA image info */
+	if (!info->firmware_name) {
+		ret = 0;
+		goto ret_no_info;
+	}
+
+	/*
+	 * If overlay informs us FPGA was externally programmed, specifying
+	 * firmware here would be ambiguous.
+	 */
+	if (info->flags & FPGA_MGR_EXTERNAL_CONFIG) {
+		dev_err(dev, "error: specified firmware and external-fpga-config");
+		ret = -EINVAL;
+		goto ret_no_info;
+	}
+
+	return info;
+ret_no_info:
+	fpga_image_info_free(info);
+	return ERR_PTR(ret);
+}
+
+/**
+ * fpga_region_manager_notify_pre_apply - pre-apply overlay notification
+ *
+ * @region: FPGA region that the overlay was applied to
+ * @nd: overlay notification data
+ *
+ * Called when an overlay targeted to a FPGA Region is about to be applied.
+ * Parses the overlay for properties that influence how the FPGA will be
+ * programmed and does some checking. If the checks pass, programs the FPGA.
+ * If the checks fail, overlay is rejected and does not get added to the
+ * live tree.
+ *
+ * Returns 0 for success or negative error code for failure.
+ */
+static int fpga_region_manager_notify_pre_apply(
+	struct fpga_region_core*       region,
+	struct of_overlay_notify_data* nd    )
+{
+	struct device *dev = &region->dev;
+	struct fpga_image_info *info;
+	int ret;
+
+	info = fpga_region_manager_parse_overlay(region, nd->overlay);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+
+	/* If overlay doesn't program the FPGA, accept it anyway. */
+	if (!info)
+		return 0;
+
+	if (region->info) {
+		dev_err(dev, "Region already has overlay applied.\n");
+		return -EINVAL;
+	}
+
+	region->info = info;
+	ret = fpga_region_core_program_fpga(region);
+	if (ret) {
+		/* error; reject overlay */
+		fpga_image_info_free(info);
+		region->info = NULL;
+	}
+
+	return ret;
+}
+
+/**
+ * fpga_region_manager_notify_post_remove - post-remove overlay notification
+ *
+ * @region: FPGA region that was targeted by the overlay that was removed
+ * @nd: overlay notification data
+ *
+ * Called after an overlay has been removed if the overlay's target was a
+ * FPGA region.
+ */
+static void fpga_region_manager_notify_post_remove(
+	struct fpga_region_core*       region,
+	struct of_overlay_notify_data* nd)
+{
+	fpga_region_interfaces_disable(&region->interface_list);
+	fpga_region_interfaces_put(&region->interface_list);
+	fpga_image_info_free(region->info);
+	region->info = NULL;
+}
+
+/**
+ * fpga_region_manager_notify - reconfig notifier for dynamic DT changes
+ * @nb:		notifier block
+ * @action:	notifier action
+ * @arg:	reconfig data
+ *
+ * This notifier handles programming a FPGA when a "firmware-name" property is
+ * added to a fpga-region.
+ *
+ * Returns NOTIFY_OK or error if FPGA programming fails.
+ */
+static int fpga_region_manager_notify(struct notifier_block *nb,
+				 unsigned long action, void *arg)
+{
+	struct of_overlay_notify_data* nd = arg;
+	struct fpga_region_core*       region;
+	int ret;
+
+	switch (action) {
+	case OF_OVERLAY_PRE_APPLY:
+		pr_debug("%s OF_OVERLAY_PRE_APPLY\n", __func__);
+		break;
+	case OF_OVERLAY_POST_APPLY:
+		pr_debug("%s OF_OVERLAY_POST_APPLY\n", __func__);
+		return NOTIFY_OK;       /* not for us */
+	case OF_OVERLAY_PRE_REMOVE:
+		pr_debug("%s OF_OVERLAY_PRE_REMOVE\n", __func__);
+		return NOTIFY_OK;       /* not for us */
+	case OF_OVERLAY_POST_REMOVE:
+		pr_debug("%s OF_OVERLAY_POST_REMOVE\n", __func__);
+		break;
+	default:			/* should not happen */
+		return NOTIFY_OK;
+	}
+
+	region = fpga_region_manager_find(nd->target);
+	if (!region)
+		return NOTIFY_OK;
+
+	ret = 0;
+	switch (action) {
+	case OF_OVERLAY_PRE_APPLY:
+		ret = fpga_region_manager_notify_pre_apply(region, nd);
+		break;
+
+	case OF_OVERLAY_POST_REMOVE:
+		fpga_region_manager_notify_post_remove(region, nd);
+		break;
+	}
+
+	put_device(&region->dev);
+
+	if (ret)
+		return notifier_from_errno(ret);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block fpga_region_manager_of_nb = {
+	.notifier_call = fpga_region_manager_notify,
+};
+
 static int fpga_region_manager_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
-	struct fpga_region *region;
+	struct fpga_region_core *region;
 	struct fpga_manager *mgr;
 	int ret;
 
@@ -149,13 +421,13 @@ static int fpga_region_manager_probe(struct platform_device *pdev)
 	if (IS_ERR(mgr))
 		return -EPROBE_DEFER;
 
-	region = devm_fpga_region_create(dev, mgr, fpga_region_manager_get_interfaces);
+	region = devm_fpga_region_core_create(dev, mgr, fpga_region_manager_get_interfaces);
 	if (!region) {
 		ret = -ENOMEM;
 		goto eprobe_mgr_put;
 	}
 
-	ret = fpga_region_register(region);
+	ret = fpga_region_core_register(region);
 	if (ret)
 		goto eprobe_mgr_put;
 
@@ -173,10 +445,10 @@ eprobe_mgr_put:
 
 static int fpga_region_manager_remove(struct platform_device *pdev)
 {
-	struct fpga_region *region = platform_get_drvdata(pdev);
-	struct fpga_manager *mgr = region->mgr;
+	struct fpga_region_core* region = platform_get_drvdata(pdev);
+	struct fpga_manager*     mgr    = region->mgr;
 
-	fpga_region_unregister(region);
+	fpga_region_core_unregister(region);
 	fpga_mgr_put(mgr);
 
 	return 0;
@@ -199,6 +471,10 @@ static int __init fpga_region_manager_init(void)
 {
 	int ret;
 
+	ret = of_overlay_notifier_register(&fpga_region_manager_of_nb);
+	if (ret)
+		return ret;
+
 	ret = platform_driver_register(&fpga_region_manager_platform_driver);
 	if (ret)
 		goto err_plat;
@@ -206,17 +482,19 @@ static int __init fpga_region_manager_init(void)
 	return 0;
 
 err_plat:
+	of_overlay_notifier_unregister(&fpga_region_manager_of_nb);
 	return ret;
 }
 
 static void __exit fpga_region_manager_exit(void)
 {
 	platform_driver_unregister(&fpga_region_manager_platform_driver);
+	of_overlay_notifier_unregister(&fpga_region_manager_of_nb);
 }
 
 subsys_initcall(fpga_region_manager_init);
 module_exit(fpga_region_manager_exit);
 
 MODULE_DESCRIPTION("FPGA Region Manager");
-MODULE_AUTHOR("Ichiro Kawazome <ichiro_k@ca2.so-net.ne.jp>");
+MODULE_AUTHOR("Alan Tull <atull@kernel.org>");
 MODULE_LICENSE("GPL v2");

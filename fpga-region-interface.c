@@ -311,14 +311,14 @@ int of_fpga_region_interface_get_to_list(
 	interface = of_fpga_region_interface_get(np, info);
 	if (!IS_ERR(interface)) {
 		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
-		list_add(&interface->node, interface_list);
+		list_add_tail(&interface->node, interface_list);
 		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
 		return 0;
         }
 	bridge = of_fpga_bridge_get(np, info);
 	if (!IS_ERR(bridge)) {
 		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
-		list_add(&bridge->node, interface_list);
+		list_add_tail(&bridge->node, interface_list);
 		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
 		return 0;
         }
@@ -349,14 +349,14 @@ int fpga_region_interface_get_to_list(
 	interface = fpga_region_interface_get(dev, info);
 	if (!IS_ERR(interface)) {
 		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
-		list_add(&interface->node, interface_list);
+		list_add_tail(&interface->node, interface_list);
 		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
 		return 0;
         }
 	bridge = fpga_bridge_get(dev, info);
 	if (!IS_ERR(bridge)) {
 		spin_lock_irqsave(&fpga_region_interface_list_lock, flags);
-		list_add(&bridge->node, interface_list);
+		list_add_tail(&bridge->node, interface_list);
 		spin_unlock_irqrestore(&fpga_region_interface_list_lock, flags);
 		return 0;
         }

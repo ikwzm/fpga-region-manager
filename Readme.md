@@ -30,6 +30,7 @@ fpga_region_interface has the following additional changes from fpga_brdige.
   * add of_setup() to fpga_region_interface_ops.
   * fpga_region_interfaces_disable() performs the reverse order of fpga_region_interfaces_enable().
   * if a name is specified when the device create, that name is set to the device name.
+  * add interface at the tail of interface_list when adding interface.
 
 fpga_region_core has the following additional changes from fpga_region.
 

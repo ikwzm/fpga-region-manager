@@ -54,7 +54,7 @@ MODULE_DESCRIPTION("FPGA Clock Configuration Driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.7.1"
+#define DRIVER_VERSION     "1.7.2-rc.1"
 #define DRIVER_NAME        "fpga-region-clock"
 #define DEVICE_MAX_NUM      32
 
@@ -875,9 +875,9 @@ static int fclk_device_setup(struct fclk_device_data* this, struct device *dev)
     this->bridge = true;
 
     /*
-     * get remove state
+     * get region state
      */
-    retval = fclk_device_get_state_property(this, dev->of_node, "region-rate", "region-enable", "region-resource", &this->remove);
+    retval = fclk_device_get_state_property(this, dev->of_node, "region-rate", "region-enable", "region-resource", &this->region);
     if (retval)
         goto failed;
 

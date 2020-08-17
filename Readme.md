@@ -72,9 +72,6 @@ Before programming the FPGA with fpga-region-manager, prepare the following devi
 ```devicetree:fpga-top-region.dts
 /dts-v1/; /plugin/;
 / {
-/dts-v1/; /plugin/;
-/ {
-/ {
 	fragment@0 {
 		target-path = "/";
 		__overlay__ {

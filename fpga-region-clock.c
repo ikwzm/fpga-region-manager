@@ -47,14 +47,14 @@
 #include "fpga-region-interface.h"
 
 /**
- * DOC: fclkcfg constants 
+ * DOC: fpga-region-clock constants 
  */
 
-MODULE_DESCRIPTION("FPGA Clock Configuration Driver");
+MODULE_DESCRIPTION("FPGA Region Clock Driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.7.1"
+#define DRIVER_VERSION     "1.7.2-rc.2"
 #define DRIVER_NAME        "fpga-region-clock"
 #define DEVICE_MAX_NUM      32
 
@@ -65,21 +65,21 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 /**
- * DOC: fclkcfg static variables
+ * DOC: fpga-region-clock static variables
  *
- * * info_enable    - fclkcfg install/uninstall infomation enable.
- * * debug_print    - fclkcfg debug print enable.
+ * * info_enable    - fpga-region-clock install/uninstall infomation enable.
+ * * debug_print    - fpga-region-clock debug print enable.
  */
 
 /**
- * info_enable      - fclkcfg install/uninstall infomation enable.
+ * info_enable      - fpga-region-clock install/uninstall infomation enable.
  */
 static int            info_enable = 1;
 module_param(         info_enable , int, S_IRUGO);
 MODULE_PARM_DESC(     info_enable , DRIVER_NAME " install/uninstall infomation enable");
 
 /**
- * debug_print      - fclkcfg debug print enable.
+ * debug_print      - fpga-region-clock debug print enable.
  */
 static int            debug_print = 0;
 module_param(         debug_print , int, S_IRUGO);
@@ -116,14 +116,20 @@ struct fclk_state {
  * of_get_fclk_state()  - get rate/enable/resource property from device tree.
  *
  * @dev:         handle to the device structure.
- * @of_node:     
+ * @of_node:     handle to the device tree node.
  * @rate_name:   rate property name
  * @enable_name: enable property name
  * @resclk_name: resource clock property name
  * @state:       address of fclk state data.
  * Return:       Success(=0) or error status(<0).
  */
-static void of_get_fclk_state(struct device* dev, struct device_node* of_node, const char* rate_name, const char* enable_name, const char* resclk_name, struct fclk_state* state)
+static void of_get_fclk_state(
+    struct device*      dev,
+    struct device_node* of_node,
+    const  char*        rate_name,
+    const  char*        enable_name,
+    const  char*        resclk_name,
+    struct fclk_state*  state)
 {
     DEV_DBG(dev, "get %s start.\n", rate_name);
     {
@@ -203,7 +209,6 @@ struct fclk_device_data {
     unsigned long        round_rate;
     struct fclk_state    insert;
     struct fclk_state    remove;
-    bool                 bridge;
     bool                 bridge_enable;
     struct fclk_state    region;
 };
@@ -756,6 +761,7 @@ static void fclk_device_info(struct fclk_device_data* this, struct platform_devi
  * fclk_device_get_state_property() - get rate/enable/resource property from device.
  *
  * @this:        Pointer to the fclk device data.
+ * @dev:         handle to the device structure.
  * @of_node:     handle to the of node.
  * @rate_name:   rate property name
  * @enable_name: enable property name
@@ -764,13 +770,20 @@ static void fclk_device_info(struct fclk_device_data* this, struct platform_devi
  * Return:       Success(=0) or error status(<0).
  *
  */
-static int fclk_device_get_state_property(struct fclk_device_data* this, struct device_node* of_node, const char* rate_name, const char* enable_name, const char* resclk_name, struct fclk_state* state)
+static int fclk_device_get_state_property(
+    struct fclk_device_data* this       ,
+    struct device*           dev        ,
+    struct device_node*      of_node    ,
+    const  char*             rate_name  ,
+    const  char*             enable_name,
+    const  char*             resclk_name,
+    struct fclk_state*       state      )
 {
-    of_get_fclk_state(this->device, of_node, rate_name, enable_name, resclk_name, state);
+    of_get_fclk_state(dev, of_node, rate_name, enable_name, resclk_name, state);
     if ((this->resource_clks != NULL) &&
         (state->resclk_valid == true) &&
         (state->resclk >= this->resource_clks_size)) {
-        dev_err(this->device, "invalid %s(=%lu).\n", resclk_name, state->resclk);
+        dev_err(dev, "invalid %s(=%lu).\n", resclk_name, state->resclk);
         return -EINVAL;
     }
     return 0;
@@ -849,7 +862,10 @@ static int fclk_device_setup(struct fclk_device_data* this, struct device *dev)
         this->insert.resclk_valid = true; 
         this->insert.resclk       = 0;
     }
-    retval = fclk_device_get_state_property(this, dev->of_node, "insert-rate", "insert-enable", "insert-resource", &this->insert);
+    retval = fclk_device_get_state_property(
+                 this, dev, dev->of_node,
+                 "insert-rate", "insert-enable", "insert-resource", &this->insert
+             );
     if (retval)
         goto failed;
 
@@ -868,16 +884,20 @@ static int fclk_device_setup(struct fclk_device_data* this, struct device *dev)
     /*
      * get remove state
      */
-    retval = fclk_device_get_state_property(this, dev->of_node, "remove-rate", "remove-enable", "remove-resource", &this->remove);
+    retval = fclk_device_get_state_property(
+                 this, dev, dev->of_node,
+                 "remove-rate", "remove-enable", "remove-resource", &this->remove
+             );
     if (retval)
         goto failed;
 
-    this->bridge = true;
-
     /*
-     * get remove state
+     * get region state
      */
-    retval = fclk_device_get_state_property(this, dev->of_node, "region-rate", "region-enable", "region-resource", &this->remove);
+    retval = fclk_device_get_state_property(
+                 this, dev, dev->of_node,
+                 "region-rate", "region-enable", "region-resource", &this->region
+             );
     if (retval)
         goto failed;
 
@@ -1125,7 +1145,10 @@ static int fpga_region_clock_enable_show(struct fpga_region_interface *interface
 static int fpga_region_clock_of_setup(struct fpga_region_interface *interface, struct device_node* of_node)
 {
     struct fclk_device_data* this = interface->priv;
-    return fclk_device_get_state_property(this, of_node, "region-rate", "region-enable", "region-resource",  &this->region);
+    return fclk_device_get_state_property(
+               this, this->device, of_node,
+               "region-rate", "region-enable", "region-resource",  &this->region
+           );
 }
 
 /**
@@ -1262,8 +1285,8 @@ static struct fclk_device_data* fpga_region_clock_device_create(struct device *d
  */
 static int fpga_region_clock_platform_driver_probe(struct platform_device *pdev)
 {
-    int                       retval = 0;
-    struct fclk_device_data*  data;
+    int                      retval = 0;
+    struct fclk_device_data* data;
 
     data = fpga_region_clock_device_create(&pdev->dev);
     if (IS_ERR_OR_NULL(data)) {
@@ -1283,8 +1306,6 @@ static int fpga_region_clock_platform_driver_probe(struct platform_device *pdev)
     return 0;
 
  failed:
-    if (data)
-        fpga_region_clock_device_destroy(data);
     dev_info(&pdev->dev, "driver install failed.\n");
     return retval;
 }
